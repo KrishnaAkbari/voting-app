@@ -6,7 +6,7 @@ const router = new express.Router()
 const sendMail = require("../sendMail")
 
 const Users = require("../models/users")
-const {jwtAuthMiddleware, generateToken} = require('../jwt')
+const {jwtAuthMiddleware, generateToken} = require('../jwt');
 
 // User Signup
 router.post('/signup', async(req, res) => {
@@ -31,12 +31,13 @@ router.post('/signup', async(req, res) => {
         const emailVerificationToken = crypto.randomBytes(32).toString('hex');
 
         // Create a new user
-        const newUser = new Users({ name, email, age, mobile, address, aadharcardNumber, password, role, emailVerificationToken });
+        const newUser = new Users({ name, email, age, mobile, address, aadharcardNumber, password, role });
+        newUser.tokens = newUser.tokens.concat({ token: emailVerificationToken, type: 'emailVerification' })
         const savedUser = await newUser.save();
 
         // Generate token and save it to the user
         const token = generateToken(savedUser._id)
-        savedUser.tokens = savedUser.tokens.concat({ token });
+        savedUser.tokens = savedUser.tokens.concat({ token, type: 'auth' });
         await savedUser.save();
 
         let url = `${process.env.BASE_URL}/user/verify-email/${emailVerificationToken}`
@@ -56,13 +57,13 @@ router.get("/verify-email/:token", async(req,res) => {
         const token = req.params.token
 
         // Find user by email verification token
-        const user = await Users.findOne({emailVerificationToken: token})
+        const user = await Users.findOne({"tokens.token": token, "tokens.type": "emailVerification"})
         if(!user){
             return res.status(404).json({ message: 'Token not valid or expired' });
         }
 
         user.isEmailVerified = true
-        user.emailVerificationToken = ''
+        user.tokens = user.tokens.filter(t => t.token !== token);
         await user.save()
 
         res.status(200).json({ message: 'Email verified successfully' });
@@ -99,6 +100,54 @@ router.post("/login", async(req, res) => {
 
     }catch(e){
         res.status(500).json({error: e.message})
+    }
+})
+
+// Forgot Password
+router.post("/forgot-password", async(req, res) => {
+    try{
+        const { email } = req.body
+
+        // Find user by email
+        const user = await Users.findOne({email})
+        if(!user){
+            return res.status(401).json({message: "User with given email does not exits"})
+        }
+
+        // Generate forgot password token
+        const forgotPasswordToken = crypto.randomBytes(32).toString('hex');
+        user.tokens = user.tokens.concat({ token: forgotPasswordToken, type: 'forgotPassword' });
+        await user.save()
+
+        let url = `${process.env.BASE_URL}/user/reset-password/${forgotPasswordToken}`
+
+        await sendMail(user.email, "Reset Password", `<a href="http://${url}">${url}</a>`)
+
+        res.status(201).json({message: "Password reset email sent"});
+    }catch(e){
+        res.status(500).send({error: e.message})
+    }
+})
+
+// Reset Password
+router.post("/reset-password/:token", async(req, res) => {
+    try{
+
+        const { password } = req.body
+        const { token } = req.params
+
+        const user = await Users.findOne({"tokens.token": token, "tokens.type": "forgotPassword"})
+
+        if(!user) return res.status(401).json({message: "Password reset token is invalid"})
+
+        user.password = password
+        user.tokens = user.tokens.filter(t => t.token !== token);
+        await user.save()
+
+        res.status(200).json({message: "Password has been reset"});
+
+    }catch(e){
+        res.status(500).send({error: e.message})
     }
 })
 

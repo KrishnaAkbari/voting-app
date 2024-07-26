@@ -45,15 +45,20 @@ const userSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
-    emailVerificationToken:{
-        type: String
-    },
     tokens: [{
-        token:{
+        token: {
             type: String,
             required: true
+        },
+        type: {
+            type: String,
+            enum: ['emailVerification', 'forgotPassword', 'auth'],
+            required: true
+        },
+        expiry: {
+            type: Date
         }
-    }]  
+    }] 
 })
 
 // Pre-save hook to hash the password before saving the user document

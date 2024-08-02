@@ -43,8 +43,22 @@ router.post('/', jwtAuthMiddleware, async(req, res) => {
 router.get('/', async(req, res) => {
     try {
 
-        // Find all candidates
-        const candidates = await Candidate.find()
+        const { query } = req.query
+        let candidates;
+
+        if(query){
+            // Search candidate by name or party
+            candidates = await Candidate.find({
+                $or: [
+                    { name: {$regex: query, $options: 'i'} },
+                    { party: {$regex: query, $options: 'i'} }
+                ]
+            })
+        }
+        else{
+            // Find all candidates
+            candidates = await Candidate.find()
+        }
 
         res.status(200).json({candidates: candidates})
         

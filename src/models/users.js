@@ -45,6 +45,16 @@ const userSchema = mongoose.Schema({
         type: Boolean,
         default: false
     },
+    is2faEnabled: {
+        type: Boolean,
+        default: false
+    },
+    otp: {
+        type: String
+    },
+    otpExpires: {
+        type: Date
+    },
     tokens: [{
         token: {
             type: String,

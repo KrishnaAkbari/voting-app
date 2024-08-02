@@ -90,6 +90,20 @@ router.post("/login", async(req, res) => {
             return res.status(401).json({ message: "Invalid login details" });
         }
 
+        // Check 2fa status
+        if(user.is2faEnabled){
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const otpExpires = Date.now() + 10 * 60 * 1000; 
+
+            user.otp = otp;
+            user.otpExpires = otpExpires;
+            await user.save();
+
+            await sendMail(user.email, "Two Factor Authentication OTP", otp)
+
+            return res.status(200).json({message: "Two Factor Authentication OTP Sent Successfully."})
+        }
+
         // Generate token and set cookie
         const token = generateToken(user.id)
         res.cookie("jwt", token, {
@@ -97,6 +111,34 @@ router.post("/login", async(req, res) => {
         })
 
         res.status(200).json({ token });
+
+    }catch(e){
+        res.status(500).json({error: e.message})
+    }
+})
+
+// Verify Two Factor OTP
+router.post("/verify-2fa-otp", async(req, res) => {
+    try{
+
+        const {email, otp} = req.body
+        const user = await Users.findOne({email, otp, otpExpires: {$gt: Date.now()}})
+
+        if(!user){
+            return res.status(400).json({message: "Invalid OTP"})
+        }
+
+        user.otp = undefined
+        user.otpExpires = undefined
+        await user.save()
+
+        // Generate token and set cookie
+        const token = generateToken(user.id)
+        res.cookie("jwt", token, {
+            expires: new Date(Date.now() + 30000) // Token expiry time
+        })
+
+        res.status(200).json({message: "OTP Verify Successfully.", token });
 
     }catch(e){
         res.status(500).json({error: e.message})
@@ -193,5 +235,28 @@ router.patch("/profile/password", jwtAuthMiddleware, async(req, res) => {
         res.status(500).json({error: e.message})
     }
 })
+
+// Enable/Disable Two Factor Authentication
+router.get("/toggle-2fa", jwtAuthMiddleware, async(req, res) => {
+    try{
+
+        const userId = req.jwtPayload.userData
+        const user = await Users.findById(userId)
+
+        if(!user) return res.status(404).json({error: 'User not found'})
+
+        // Enable/Disable 2fa
+        user.is2faEnabled = !user.is2faEnabled
+        await user.save();
+
+        res.status(200).json({
+            message: user.is2faEnabled ? 'Two factor authentication enabled successfully' : 'Two factor authentication disabled successfully'
+        })
+    }catch(e){
+        res.status(500).json({error: e.message})
+    }
+})
+
+
 
 module.exports = router
